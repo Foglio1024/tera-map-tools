@@ -131,7 +131,7 @@ class Level:
                 current_static_mesh_component = None
             else:
                 if line.find("Layers(") != -1:
-                    current_actor.layers.append(line.split('=')[1].replace('"', ''))
+                    current_actor.layers.append(line.split("=")[1].replace('"', ""))
 
                 if current_static_mesh_component != None:
                     current_static_mesh_component.read_line(line)
@@ -198,17 +198,19 @@ class StaticMeshComponent:
         self.location = [0, 0, 0]
         self.rotation = [0, 0, 0]
         self.scale = [1, 1, 1]
+        self.disable_collisions = False
 
     def read_line(self, line):
-        if line.find("RelativeLocation") != -1:
+        if "RelativeLocation" in line:
             self.location = Utils.parse_vector(line, "RelativeLocation")
-        elif line.find("RelativeRotation") != -1:
+        elif "RelativeRotation" in line:
             self.rotation = Utils.parse_vector(line, "RelativeRotation")
-        elif line.find("RelativeScale3D") != -1:
+        elif "RelativeScale3D" in line:
             self.scale = Utils.parse_vector(line, "RelativeScale3D")
-        elif line.find("StaticMesh=StaticMesh") != -1:
+        elif "StaticMesh=StaticMesh" in line:
             self.mesh_path = Utils.parse_mesh_path(line)
-            print(f"Set mesh path: {self.mesh_path}")
+        elif "CollisionEnabled=NoCollision" in line:
+            self.disable_collisions = True
 
     def apply_transform_to(self, obj):
         obj.scale.x = self.scale[0]
@@ -286,8 +288,11 @@ class MapImporter:
         idx = 0
 
         for sma in level.actors:
+            if "LM_MLOD" in sma.layers:
+                continue
 
-            if 'LM_MLOD' in sma.layers: continue
+            if sma.smc.disable_collisions == True: 
+                continue
 
             idx += 1
             mesh_path = os.path.join(self.source_dir, level.name, sma.smc.mesh_path)
@@ -298,7 +303,7 @@ class MapImporter:
                 imported = None
                 for loaded_name, loaded_path in loaded_meshes:
                     if loaded_path == mesh_path:
-                        # print(f"Copying {sma.label} <- {loaded_name}")
+                        # print(f'Copying {sma.label} <- {loaded_name}')
                         src = bpy.data.objects[loaded_name]
                         cp = src.copy()
                         cp.data = src.data
@@ -306,7 +311,7 @@ class MapImporter:
                         break
 
                 if imported == None:
-                    # print(f"Importing {mesh_path}")
+                    # print(f'Importing {mesh_path}')
                     bpy.ops.import_scene.psk(filepath=mesh_path)
                     imported = bpy.context.scene.collection.objects[0]
                     loaded_meshes.append((f"{sma.label}_{sma.index}", mesh_path))
@@ -317,10 +322,19 @@ class MapImporter:
 
                 sma.smc.apply_transform_to(imported)
 
+                # test_coll = Utils.find_or_create_collection('test')
+                # if test_coll.name not in self.map_coll.children:
+                #     self.map_coll.children.link(test_coll)
+                #     bpy.context.scene.collection.children.unlink(test_coll)
+
                 if sma.scene_component != None:
                     sma.scene_component.apply_transform_to(imported)
-                    
-                self.map_coll.objects.link(imported)
+                
+                # if sma.smc.disable_collisions == True: 
+                #     test_coll.objects.link(imported)
+                # else:
+                #     self.map_coll.objects.link(imported)
+
                 # unlink object from main collection
                 if imported.name in bpy.context.scene.collection.objects:
                     bpy.context.scene.collection.objects.unlink(imported)
@@ -395,6 +409,9 @@ class MapImporter:
         self.import_terrains(terrains)
 
         Utils.reframe(self.map_coll)
+
+        for coll in self.map_coll.children:
+            Utils.reframe(coll)
 
 
 # -------------------------------------------------------------------

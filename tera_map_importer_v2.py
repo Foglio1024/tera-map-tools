@@ -130,8 +130,12 @@ class Level:
                 current_scene_component = None
                 current_static_mesh_component = None
             else:
+                if line.find("Layers(") != -1:
+                    current_actor.layers.append(line.split('=')[1].replace('"', ''))
+
                 if current_static_mesh_component != None:
                     current_static_mesh_component.read_line(line)
+
                 if current_scene_component != None:
                     current_scene_component.read_line(line)
         return ret
@@ -144,6 +148,7 @@ class StaticMeshActor:
         self.scene_component = None
         self.index = idx
         self.label = ""
+        self.layers = []
 
     def set_label(self, line):
         self.label = line.split("=")[1].replace('"', "")
@@ -281,6 +286,9 @@ class MapImporter:
         idx = 0
 
         for sma in level.actors:
+
+            if 'LM_MLOD' in sma.layers: continue
+
             idx += 1
             mesh_path = os.path.join(self.source_dir, level.name, sma.smc.mesh_path)
 

@@ -141,9 +141,11 @@ class StaticMeshComponent:
 class Terrain:
     def read_from(file_path):
 
-        printer.print(f'Reading terrains from {file_path}')
-
         ret = []
+
+        if not os.path.exists(file_path): return ret
+
+        printer.print(f'Reading terrains from {file_path}')
 
         current_terrain = None
         lines = open(file_path, "r").readlines()

@@ -16,14 +16,17 @@ class Utils:
             class_name = (
                 line[class_idx : line.find("Name=")]
                 .replace("Class=/Script/Engine.", "")
-                .trim()
+                .strip()
             )
 
         return class_name
 
     def parse_vector(line, name):
+
+        if name != '': line = line.replace(f"{name}=", "")
+
         split = (
-            line.replace(f"{name}=", "").replace("(", "").replace(")", "").split(",")
+            line.replace("(", "").replace(")", "").split(",")
         )
 
         ret = []  # x, y, z
@@ -71,10 +74,15 @@ class Utils:
 
         bpy.data.objects.remove(bpy.data.objects[pivot.name])
 
+    def divide_chunks(l, n):
+      
+        for i in range(0, len(l), n): 
+            yield l[i:i + n]
 
 class Level:
     def __init__(self, name):
         self.actors = []
+        self.blocking_volumes = []
         self.name = name
 
     def read_from(file_path):
@@ -84,9 +92,11 @@ class Level:
 
         ret = Level(t.replace(".t3d", ""))
 
-        current_actor = None
+        current_staticmeshactor = None
         current_scene_component = None
         current_static_mesh_component = None
+        # current_blockingvolumeactor = None
+        # current_brush_component = None
 
         actor_labels = []
 
@@ -98,12 +108,18 @@ class Level:
             line = line.strip()
             if line.startswith("Begin Actor"):
                 actor_name = Utils.parse_name(line)
-                current_actor = StaticMeshActor(f"{actor_name}_{idx}", idx)
+                actor_class = Utils.parse_class(line)
+
+                if actor_class == 'StaticMeshActor':
+                    current_staticmeshactor = StaticMeshActor(f"{actor_name}_{idx}", idx)
+                # elif actor_class == 'BlockingVolume':
+                #     current_blockingvolumeactor = BlockingVolumeActor(f"{actor_name}_{idx}")
                 idx = idx + 1
                 actor_labels.append(actor_name)
                 print(f"Created Actor {actor_name}")
-            elif line.startswith("ActorLabel"):
-                current_actor.set_label(line)
+
+            elif line.startswith("ActorLabel") and current_staticmeshactor is not None:
+                current_staticmeshactor.set_label(line)
 
             elif line.startswith("Begin Object"):
                 obj_name = Utils.parse_name(line)
@@ -111,34 +127,100 @@ class Level:
                     current_scene_component = SceneComponent(obj_name)
                 elif obj_name.startswith("StaticMeshComponent"):
                     current_static_mesh_component = StaticMeshComponent(obj_name)
+                # elif obj_name.startswith('BrushComponent'):
+                #     current_brush_component = BrushComponent(obj_name)
+
             elif line.startswith("End Object"):
                 if (
                     current_static_mesh_component != None
+                    and current_staticmeshactor is not None
                     and current_static_mesh_component.mesh_path != ""
                 ):
-                    current_actor.smc = current_static_mesh_component
-                if current_scene_component != None:
-                    current_actor.scene_component = current_scene_component
+                    current_staticmeshactor.smc = current_static_mesh_component
+                if current_staticmeshactor is not None and current_scene_component != None:
+                    current_staticmeshactor.scene_component = current_scene_component
+                # if current_brush_component != None and current_blockingvolumeactor != None:
+                #     current_blockingvolumeactor.brush_component = current_brush_component
 
-            elif line.startswith("End Actor"):
-                if current_actor.smc == None:
-                    continue
-                if current_actor.label in actor_labels:
-                    continue
-                ret.actors.append(current_actor)
-                actor_labels.append(current_actor.label)
-                current_scene_component = None
-                current_static_mesh_component = None
+            elif line.startswith("End Actor") :
+                if current_staticmeshactor is not None and current_staticmeshactor.smc != None and current_staticmeshactor.label not in actor_labels:
+                    ret.actors.append(current_staticmeshactor)
+                    actor_labels.append(current_staticmeshactor.label)
+                    current_scene_component = None
+                    current_static_mesh_component = None
+                    current_staticmeshactor = None
+                # if current_blockingvolumeactor != None:
+                #     ret.blocking_volumes.append(current_blockingvolumeactor)
+                #     current_blockingvolumeactor = None
+
             else:
-                if line.find("Layers(") != -1:
-                    current_actor.layers.append(line.split("=")[1].replace('"', ""))
+                if "Layers(" in line and current_staticmeshactor is not None:
+                    current_staticmeshactor.layers.append(line.split("=")[1].replace('"', ""))
 
                 if current_static_mesh_component != None:
                     current_static_mesh_component.read_line(line)
 
                 if current_scene_component != None:
                     current_scene_component.read_line(line)
+
+                # if current_brush_component != None:
+                #     current_brush_component.read_line(line)
         return ret
+
+class BrushComponent:
+    def __init__(self, name):
+        self.name = name
+        self.vertices = []
+        self.indices = []
+        self.location = [0, 0, 0]
+
+    def read_line(self, line):
+        if 'AggGeom' in line:
+            self.parse_agg_geom(line)
+        if "RelativeLocation" in line:
+            self.location = Utils.parse_vector(line, "RelativeLocation")
+
+    def apply_transform_to(self, obj):
+        obj.scale.y = obj.scale.y * (-1)
+
+        # obj.rotation_euler.x = math.radians(self.rotation[2] * (-1))
+        # obj.rotation_euler.y = math.radians(self.rotation[0])
+        # obj.rotation_euler.z = math.radians(self.rotation[1])
+
+        obj.location.x = self.location[0]
+        obj.location.y = self.location[1]
+        obj.location.z = self.location[2]
+
+    def parse_agg_geom(self, line):
+        line = line.replace('AggGeom=(','')[:-1]
+        count = line.count('VertexData')
+
+        if count > 1:
+            raise Exception('More than one ConvexElem found!')
+        
+        vertex_data_start = line.find('VertexData')
+        idx_data_start = line.find('IndexData')
+
+        vertex_data = line[vertex_data_start + len('VertexData=('): idx_data_start - len('),')]
+        vertex_data = vertex_data.replace('),', ')|')
+
+        str_vertices = vertex_data.split('|')
+
+        for str_vert in str_vertices:
+            # print(str_vert)
+            self.vertices.append(Utils.parse_vector(str_vert, ''))
+
+        idx_data = line[idx_data_start + len('IndexData=('):line.find('ElemBox') - len('),')].split(',')
+
+        for str_idx in idx_data:
+            # print(str_idx)
+            self.indices.append(int(str_idx))
+
+
+class BlockingVolumeActor:
+    def __init__(self, name):
+        self.name = name
+        self.brush_component = None
 
 
 class StaticMeshActor:
@@ -190,6 +272,10 @@ class SceneComponent:
 
         bpy.data.objects.remove(bpy.data.objects[tmp.name])
 
+class ConvexElem:
+    def __init__(self):
+        self.vertices = []
+        self.indices = []
 
 class StaticMeshComponent:
     def __init__(self, name):
@@ -199,6 +285,7 @@ class StaticMeshComponent:
         self.rotation = [0, 0, 0]
         self.scale = [1, 1, 1]
         self.disable_collisions = False
+        self.agg_geoms = []
 
     def read_line(self, line):
         if "RelativeLocation" in line:
@@ -211,6 +298,40 @@ class StaticMeshComponent:
             self.mesh_path = Utils.parse_mesh_path(line)
         elif "CollisionEnabled=NoCollision" in line:
             self.disable_collisions = True
+        elif 'AggGeom' in line:
+            self.parse_agg_geom(line)
+
+    def parse_agg_geom(self, line):
+        line = line.replace('AggGeom=(','')[:-1]
+        count = line.count('VertexData')
+
+        for _ in range(count):
+
+            convex_elem = ConvexElem()
+
+            vertex_data_start = line.find('VertexData')
+            idx_data_start = line.find('IndexData')
+
+            vertex_data = line[vertex_data_start + len('VertexData=('): idx_data_start - len('),')]
+            vertex_data = vertex_data.replace('),', ')|')
+
+            str_vertices = vertex_data.split('|')
+
+            for str_vert in str_vertices:
+                # print(str_vert)
+                convex_elem.vertices.append(Utils.parse_vector(str_vert, ''))
+
+            idx_elem_box = line.find('ElemBox=')
+            idx_data = line[idx_data_start + len('IndexData=('):idx_elem_box - len('),')].split(',')
+            idx_data.reverse()
+            for str_idx in idx_data:
+                # print(str_idx)
+                convex_elem.indices.append(int(str_idx))
+            
+            self.agg_geoms.append(convex_elem)
+
+            line = line[idx_elem_box + len('ElemBox='):]
+
 
     def apply_transform_to(self, obj):
         obj.scale.x = self.scale[0]
@@ -225,6 +346,18 @@ class StaticMeshComponent:
         obj.location.y = self.location[1]
         obj.location.z = self.location[2]
 
+    def agg_apply_transform_to(self, obj):
+        obj.scale.x = self.scale[0]
+        obj.scale.y = self.scale[1] #* (-1)
+        obj.scale.z = self.scale[2]
+
+        obj.rotation_euler.x = math.radians(self.rotation[2] * (-1)) 
+        obj.rotation_euler.y = math.radians(self.rotation[0] * (-1)) 
+        obj.rotation_euler.z = math.radians(self.rotation[1])
+
+        obj.location.x = self.location[0]
+        obj.location.y = self.location[1]
+        obj.location.z = self.location[2]
 
 class Terrain:
     def read_from(file_path):
@@ -283,18 +416,17 @@ class MapImporter:
         self.t3d_path = f"{self.level_dir}\\{map_name}.t3d"
         self.terrains_path = f"{self.level_dir}\\Terrains.txt"
 
-    def import_actors(self, level):
-        loaded_meshes = []
+    def import_blocking_volumes(self, level):
         idx = 0
-
-        for sma in level.actors:
-            if "LM_MLOD" in sma.layers:
-                continue
-
-            if sma.smc.disable_collisions == True: 
-                continue
-
+        for vol in level.blocking_volumes:
             idx += 1
+            vol_mesh = bpy.data.meshes.new(f'BlockingVolume_{str(idx)}')
+            vol_mesh.from_pydata(vol.brush_component.vertices, [], list(Utils.divide_chunks(vol.brush_component.indices, 3)))
+            vol_obj = bpy.data.objects.new(f'BlockingVolume_{str(idx)}', vol_mesh)
+            vol.brush_component.apply_transform_to(vol_obj)
+            self.map_coll.objects.link(vol_obj)
+
+    def build_actor(self, sma, idx, loaded_meshes, level):
             mesh_path = os.path.join(self.source_dir, level.name, sma.smc.mesh_path)
 
             if not os.path.exists(mesh_path):
@@ -320,8 +452,13 @@ class MapImporter:
                 imported.name = f"{sma.label}_{sma.index}"
                 imported.data.name = mesh_name
 
+
                 sma.smc.apply_transform_to(imported)
 
+                self.map_coll.objects.link(imported)
+                                           
+
+                
                 # test_coll = Utils.find_or_create_collection('test')
                 # if test_coll.name not in self.map_coll.children:
                 #     self.map_coll.children.link(test_coll)
@@ -338,6 +475,54 @@ class MapImporter:
                 # unlink object from main collection
                 if imported.name in bpy.context.scene.collection.objects:
                     bpy.context.scene.collection.objects.unlink(imported)
+
+    def generate_agg_geom(self, sma):
+        idx = 0
+
+        objects = []
+
+        for convex_elem in sma.smc.agg_geoms:
+            name = f'AG_{sma.label}_{str(idx)}'
+            mesh = bpy.data.meshes.new(name)
+            mesh.from_pydata(convex_elem.vertices, [], list(Utils.divide_chunks(convex_elem.indices, 3)))
+            obj = bpy.data.objects.new(name, mesh)
+
+            sma.smc.agg_apply_transform_to(obj)
+            self.map_coll.objects.link(obj)
+            if obj.name in bpy.context.scene.collection.objects:
+                bpy.context.scene.collection.objects.unlink(obj)
+
+            objects.append(obj)
+
+            print(f'Created ConvexElem from {len(convex_elem.vertices)} vertices')
+
+            idx += 1
+        if len(objects) > 1:
+            bpy.ops.object.select_all(action='DESELECT')
+            for o in objects:
+                o.select_set(True)
+                bpy.context.view_layer.objects.active = o
+            bpy.ops.object.join()
+
+
+
+    def import_actors(self, level):
+        loaded_meshes = []
+        idx = 0
+
+        for sma in level.actors:
+            if "LM_MLOD" in sma.layers:
+                continue
+
+            if sma.smc.disable_collisions == True: 
+                continue
+            
+            # self.build_actor(sma, idx, loaded_meshes, level)
+
+            self.generate_agg_geom(sma)
+
+            print(f'Imported actor {idx + 1} of {len(level.actors)}')
+            idx += 1
 
     def import_terrains(self, terrains):
         for ter in terrains:
@@ -406,6 +591,7 @@ class MapImporter:
         self.map_coll = Utils.find_or_create_collection(level.name)
 
         self.import_actors(level)
+        #self.import_blocking_volumes(level)
         self.import_terrains(terrains)
 
         Utils.reframe(self.map_coll)
@@ -413,6 +599,19 @@ class MapImporter:
         for coll in self.map_coll.children:
             Utils.reframe(coll)
 
+        # idx = 1
+        # for obj in self.map_coll.objects:
+        #     print(f'Recalculating normals of object {idx} of {len(self.map_coll.objects)}')
+        #     bpy.ops.object.select_all(action='DESELECT')
+        #     obj.select_set(True)
+        #     bpy.context.view_layer.objects.active = obj
+        #     bpy.ops.object.mode_set(mode='EDIT')
+        #     bpy.ops.mesh.select_all(action='SELECT')
+        #     bpy.ops.mesh.normals_make_consistent(inside=False)
+        #     bpy.ops.object.editmode_toggle()
+        #     idx+=1
+        
+        # bpy.ops.object.select_all(action='DESELECT')
 
 # -------------------------------------------------------------------
 

@@ -54,7 +54,6 @@ volume_idx = 0
 num_squares = 120
 num_cells = 8
 
-# missed_points = []
 missed_points = {}
 start = time.time()
 while True:
@@ -69,7 +68,6 @@ while True:
 
     for sx in range(num_squares):
         for sy in range(num_squares):
-            # printer.reprint(f'Square: {x},{y} @ {volume_idx}')
             square_location_x = (
                 sx * (ZONE_SIZE / 120) + ZONE_OFFSET.x * ZONE_SIZE
             ) / SCENE_SCALE
@@ -89,8 +87,6 @@ while True:
 
                     cell_idx = cx + (num_cells * cy) + (sx + (num_squares * sy)) * num_cells * num_cells
 
-                    # point_key = f'{abs_x}_{abs_y}'
-
                     if cell_idx in missed_points: continue
                     cell_start = time.time()
                     result, z, obj = raycast(abs_x, abs_y)
@@ -99,7 +95,6 @@ while True:
                         if obj.name not in objects_hit:
                             objects_hit.append(obj.name)
                     else:
-                        # missed_points.append([abs_x, abs_y])
                         missed_points[cell_idx] = True
                     cell_end = time.time()
                     cell_times.append(cell_end - cell_start)

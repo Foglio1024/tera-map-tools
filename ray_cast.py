@@ -1,206 +1,305 @@
+import math
 import time
 import bmesh
 import bpy
+import sys
+import os
+
+dir = os.path.dirname(bpy.data.filepath)
+if not dir in sys.path:
+    sys.path.append(dir)
+
+from bpy import context as C
+from bpy import data as D
+from bpy_extras.object_utils import object_data_add
 from mathutils import bvhtree
 from mathutils import Vector
-from bpy_extras.object_utils import object_data_add
+from lib.topology import Point2D
 from lib.printer import Printer
 from lib.time_tracker import TimeTracker
 from lib.utils import Utils
 
-printer = Printer()
-time_tracker = TimeTracker()
+P = Printer()
+T = TimeTracker()
 
-SCENE_SCALE = bpy.context.scene.unit_settings.scale_length
-
-ZONE_MAX_HEIGHT = 32800 / SCENE_SCALE
-RAYCAST_LENGTH = 40000
+SCENE_SCALE = C.scene.unit_settings.scale_length
 
 
-def raycast(x, y):
-    result, location, normal, index, object, matrix = bpy.context.scene.ray_cast(
-        bpy.context.view_layer.depsgraph,
-        Vector((x, y, ZONE_MAX_HEIGHT)),
-        Vector((0, 0, -1)),
-        distance=RAYCAST_LENGTH,
+class ZoneShape:
+    def __init__(
+        self, pos: Point2D, origin: Point2D, max_height: float, base_size: float
+    ):
+        self.num_squares: int = 120
+        self.num_cells: int = 8
+
+        self.pos = pos
+        self.origin = origin
+        self.max_height = max_height / SCENE_SCALE
+        self.base_size = base_size
+
+        self.rel_pos = Point2D(pos.x - origin.x, pos.y - origin.y)
+        self.size = base_size * SCENE_SCALE
+        self.square_size = self.size / self.num_squares
+
+        self.__create_bounding_box()
+
+    def __create_bounding_box(self):
+        bb_mesh = D.meshes.new("ZoneBB")
+        bb_obj = D.objects.new("ZoneBB", bb_mesh)
+        bb_obj.location.x = self.base_size * self.rel_pos.y  # swapped
+        bb_obj.location.y = self.base_size * self.rel_pos.x  # swapped
+        bb_points = [
+            [0, 0, 0],
+            [self.base_size, 0, 0],
+            [self.base_size, self.base_size, 0],
+            [0, self.base_size, 0],
+            [0, 0, self.max_height],
+            [self.base_size, 0, self.max_height],
+            [self.base_size, self.base_size, self.max_height],
+            [0, self.base_size, self.max_height],
+        ]
+        bb_faces = [
+            [0, 1, 2, 3],
+            [0, 1, 5, 4],
+            [1, 2, 6, 5],
+            [2, 3, 7, 6],
+            [3, 0, 4, 7],
+            [4, 5, 6, 7],
+        ]
+        bb_mesh.from_pydata(bb_points, [], bb_faces)
+        C.scene.collection.objects.link(bb_obj)
+        bb_obj.display_type = "WIRE"
+
+        bb_bmesh = bmesh.new()
+        bb_bmesh.from_mesh(bb_mesh)
+        bb_bmesh.transform(bb_obj.matrix_basis)
+        bb_bvhtree = bvhtree.BVHTree.FromBMesh(bb_bmesh)
+
+        self.bounding_box_object = bb_obj
+        self.bounding_box_bvhtree = bb_bvhtree
+
+    def get_square_pos(self, sx: int, sy: int):
+        return Point2D(
+            (sx * self.square_size + self.rel_pos.y * self.size) / SCENE_SCALE,
+            (sy * self.square_size + self.rel_pos.x * self.size) / SCENE_SCALE,
+        )
+
+    def get_cell_pos(self, sx: int, sy: int, cx: int, cy: int):
+        sq_pos = self.get_square_pos(sx, sy)
+
+        cell_rel_pos = Point2D(
+            (cx + 0.5) * ((self.square_size / self.num_cells) / SCENE_SCALE),
+            (cy + 0.5) * ((self.square_size / self.num_cells) / SCENE_SCALE),
+        )
+
+        return Point2D(
+            round(cell_rel_pos.x + sq_pos.x, 3), round(cell_rel_pos.y + sq_pos.y, 3)
+        )
+
+    def get_cell_index(self, sx: int, sy: int, cx: int, cy: int):
+        return int(
+            cx
+            + (self.num_cells * cy)
+            + (sx + (self.num_squares * sy)) * int(math.pow(self.num_cells, 2))
+        )
+
+    def is_object_partially_in_zone(self, object):
+        # create bmesh objects
+        bm = bmesh.new()
+
+        # fill bmesh data from objects
+        bm.from_mesh(object.data)
+
+        bm.transform(object.matrix_world)
+
+        # make BVH tree from BMesh of objects
+        object_bvhtree = bvhtree.BVHTree.FromBMesh(bm)
+
+        # get intersecting pairs
+        inter = object_bvhtree.overlap(self.bounding_box_bvhtree)
+
+        return inter != []
+
+    def is_object_origin_in_zone(self, object):
+        left = self.bounding_box_object.location.x  # - zone_object.dimensions.x / 2
+        right = left + self.bounding_box_object.dimensions.x  # / 2
+        bottom = self.bounding_box_object.location.y  # - zone_object.dimensions.y / 2
+        top = bottom + self.bounding_box_object.dimensions.y  # / 2
+
+        ret = (
+            object.location.x >= left
+            and object.location.x <= right
+            and object.location.y >= bottom
+            and object.location.y <= top
+        )
+
+        return ret
+
+
+ZONE = ZoneShape(Point2D(57, 57), Point2D(56, 57), 65535 / 2, 614.4)
+
+
+def raycast(x: float, y: float, z: float):
+    result, location, normal, index, object, matrix = C.scene.ray_cast(
+        C.view_layer.depsgraph, (x, y, z), (0, 0, -1), distance=ZONE.max_height
     )
     return result, location.z, object
 
-def is_object_partially_in_zone(zone_BVHtree, object):
-    #create bmesh objects
-    bm2 = bmesh.new()
 
-    #fill bmesh data from objects
-    bm2.from_mesh(object.data)
+def set_origin_to_geometry(objects):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objects:
+        o.select_set(True)
+        C.view_layer.objects.active = o
 
-    bm2.transform(object.matrix_world) 
+    # bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
+    bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY")
+    bpy.ops.object.select_all(action="DESELECT")
 
-    #make BVH tree from BMesh of objects
-    object_BVHtree = bvhtree.BVHTree.FromBMesh(bm2)
 
-    #get intersecting pairs
-    inter = object_BVHtree.overlap(zone_BVHtree)
+# ZONE_SIZE = ZONE.base_size * SCENE_SCALE
+SRC_COLLECTION = "RNW_C_P"
 
-    return inter != []
+excl_coll = D.collections.new(SRC_COLLECTION + "_excl")
+C.scene.collection.children.link(excl_coll)
+C.window.view_layer.layer_collection.children[excl_coll.name].exclude = True
 
-def is_object_origin_in_zone(zone_object, object):
-    left = zone_object.location.x #- zone_object.dimensions.x / 2
-    right  = left + zone_object.dimensions.x #/ 2
-    bottom  = zone_object.location.y #- zone_object.dimensions.y / 2
-    top  = bottom + zone_object.dimensions.y #/ 2
+geo_coll = D.collections.new(SRC_COLLECTION + "_geo")
+C.scene.collection.children.link(geo_coll)
+C.window.view_layer.layer_collection.children[geo_coll.name].exclude = True
 
-    ret =  (object.location.x >= left and object.location.x <= right
-        and object.location.y >= bottom and object.location.y <= top)
-    
-    return ret
-
-ZONE_POSITION = [57,57] # game ref sys, inverted later
-ZONE_ORIGIN = [56,57]   # game ref sys, inverted later
-
-ZONE_BASE_SIZE = 614.4
-NUM_SQUARES = 120
-NUM_CELLS = 8
-ZONE_SIZE = ZONE_BASE_SIZE * SCENE_SCALE
-SQUARE_SIZE = ZONE_SIZE / NUM_SQUARES
-SRC_COLLECTION = 'RNW_C_P'
-
-done_coll = bpy.data.collections.new(SRC_COLLECTION + '_hit')
-excl_coll = bpy.data.collections.new(SRC_COLLECTION + '_excl')
-geo_coll = bpy.data.collections.new(SRC_COLLECTION + '_geo')
-bpy.context.scene.collection.children.link(done_coll)
-bpy.context.scene.collection.children.link(geo_coll)
-bpy.context.scene.collection.children.link(excl_coll)
-bpy.context.window.view_layer.layer_collection.children[geo_coll.name].exclude = True
-bpy.context.window.view_layer.layer_collection.children[done_coll.name].exclude = True
-bpy.context.window.view_layer.layer_collection.children[excl_coll.name].exclude = True
-
-src_objects = bpy.data.collections[SRC_COLLECTION].objects
+src_coll = D.collections[SRC_COLLECTION]
 
 # set origin of all objects in src collection to geometry center
-bpy.ops.object.select_all(action='DESELECT')
-for o in src_objects:
-    o.select_set(True)
-    bpy.context.view_layer.objects.active = o
-
-bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
-bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
-bpy.ops.object.select_all(action='DESELECT')
-bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-
-# define area coordinates
-zone_bb_mesh = bpy.data.meshes.new('ZoneBB')
-zone_bb_obj = bpy.data.objects.new('ZoneBB', zone_bb_mesh)
-zone_bb_obj.location.x = (ZONE_SIZE * (ZONE_POSITION[1] - ZONE_ORIGIN[1])) / SCENE_SCALE # swapped
-zone_bb_obj.location.y = (ZONE_SIZE * (ZONE_POSITION[0] - ZONE_ORIGIN[0])) / SCENE_SCALE # swapped
-zone_bb_points = [
-    [0,0,0],[ZONE_BASE_SIZE,0,0],[ZONE_BASE_SIZE,ZONE_BASE_SIZE,0],[0,ZONE_BASE_SIZE,0],
-    [0,0,ZONE_MAX_HEIGHT],[ZONE_BASE_SIZE,0,ZONE_MAX_HEIGHT],[ZONE_BASE_SIZE,ZONE_BASE_SIZE,ZONE_MAX_HEIGHT],[0,ZONE_BASE_SIZE,ZONE_MAX_HEIGHT]
-]
-zone_bb_faces = [
-    [0,1,2,3],
-    [0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],
-    [4,5,6,7]
-]
-zone_bb_mesh.from_pydata(zone_bb_points, [], zone_bb_faces)
-bpy.context.scene.collection.objects.link(zone_bb_obj)
-zone_bb_obj.display_type = 'WIRE'
-bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-
-zone_bb_bmesh = bmesh.new()
-zone_bb_bmesh.from_mesh(zone_bb_mesh)
-zone_bb_bmesh.transform(zone_bb_obj.matrix_basis)
-zone_BVHtree = bvhtree.BVHTree.FromBMesh(zone_bb_bmesh)
+set_origin_to_geometry(src_coll.objects)
 
 # check if objects are contained inside the area
-for o in src_objects:
-    if is_object_partially_in_zone(zone_BVHtree, o) or is_object_origin_in_zone(zone_bb_obj, o): continue
-    src_objects.unlink(o)
+for o in src_coll.objects:
+    if ZONE.is_object_partially_in_zone(o) or ZONE.is_object_origin_in_zone(o):
+        continue
+    src_coll.objects.unlink(o)
     excl_coll.objects.link(o)
 
-bpy.context.scene.collection.objects.unlink(zone_bb_obj)
+C.scene.collection.objects.unlink(ZONE.bounding_box_object)
 
 objects_hit = []
 
 volume_idx = 0
 
-missed_points = {}
+volumes = {}
+
 start = time.time()
-while True:
 
-    volume_start = time.time()
-    volume_squares = []
-    volume_name = f'Volume_{volume_idx}'
-    volume_mesh = bpy.data.meshes.new(volume_name)
-    volume_obj = bpy.data.objects.new(volume_name, volume_mesh)
-    volume_points = []
-    volume_data = []
+volume_start = time.time()
 
-    time_tracker.start()
+T.start()
 
-    for sx in range(NUM_SQUARES):
-        for sy in range(NUM_SQUARES):
-            square_location_x = (
-                sx * (ZONE_SIZE / NUM_SQUARES) + (ZONE_POSITION[1] - ZONE_ORIGIN[1]) * ZONE_SIZE
-            ) / SCENE_SCALE
-            square_location_y = (
-                sy * (ZONE_SIZE / NUM_SQUARES) + (ZONE_POSITION[0] - ZONE_ORIGIN[0]) * ZONE_SIZE
-            ) / SCENE_SCALE
+# while True:
 
-            cell_times = []
+# RAYCAST Z
 
-            for cx in range(NUM_CELLS):
-                for cy in range(NUM_CELLS):
-                    cell_x = (cx + 0.5) * ((SQUARE_SIZE/NUM_CELLS) / SCENE_SCALE)
-                    cell_y = (cy + 0.5) * ((SQUARE_SIZE/NUM_CELLS) / SCENE_SCALE)
+needs_more_layers = False
+for sx in range(ZONE.num_squares):
+    for sy in range(ZONE.num_squares):
+        for cx in range(ZONE.num_cells):
+            for cy in range(ZONE.num_cells):
+                cell_abs_pos = ZONE.get_cell_pos(sx, sy, cx, cy)
+                cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
 
-                    abs_x = cell_x + square_location_x
-                    abs_y = cell_y + square_location_y
+                hidden_objects = []
+                z_cast = ZONE.max_height
+                # if cell_idx in volumes:
+                #     cells = volumes[cell_idx]
+                #     z_cast = cells[len(cells) - 1]
+                while True:
+                    result, z, obj = raycast(cell_abs_pos.x, cell_abs_pos.y, z_cast)
 
-                    cell_idx = cx + (NUM_CELLS * cy) + (sx + (NUM_SQUARES * sy)) * NUM_CELLS * NUM_CELLS
-
-                    if cell_idx in missed_points: continue
-                    cell_start = time.time()
-                    result, z, obj = raycast(abs_x, abs_y)
                     if result:
-                        volume_points.append([abs_x, abs_y, z])
-                        if obj.name not in objects_hit:
-                            objects_hit.append(obj.name)
+                        if cell_idx in volumes:
+                            volumes[cell_idx].append(z)
+                        else:
+                            volumes[cell_idx] = [z]
+
+                        # needs_more_layers = True
+                        # z_cast = z - 0.001
+                        obj.hide_set(True)
+                        hidden_objects.append(obj)
+
                     else:
-                        missed_points[cell_idx] = True
-                    cell_end = time.time()
-                    cell_times.append(cell_end - cell_start)
+                        if cell_idx not in volumes:
+                            P.print(
+                                f"Missed ({sx},{sy})->({cx},{cy}) | ({cell_abs_pos.x} : {cell_abs_pos.y})"
+                            )
 
-            avg = 0
-            if len(cell_times) != 0:
-                avg = sum(cell_times)/len(cell_times)
+                        for hidden in hidden_objects:
+                            hidden.hide_set(False)
 
-            squares_per_sec = time_tracker.get_iterations_per_sec()
-            squares_done = sy + (sx *NUM_SQUARES)
-            squares_left = NUM_SQUARES * NUM_SQUARES - squares_done
-            time_left = squares_left / squares_per_sec
-            printer.reprint(f'Zone ({ZONE_POSITION[0]}:{ZONE_POSITION[1]}) | Volume {volume_idx} | Square ({str(int(sx)).rjust(3, " ")}:{str(int(sy)).rjust(3, " ")}) | Speed: {squares_per_sec:.1f} sq/s\t| ETA: {Utils.time_convert(time_left)}')
+                        break
 
-    if len(volume_points) != 0:
+        squares_per_sec = T.get_iterations_per_sec()
+        squares_done = sy + (sx * ZONE.num_squares)
+        squares_left = math.pow(ZONE.num_squares, 2) - squares_done
+        time_left = squares_left / squares_per_sec
+        P.reprint(
+            f'[RAYCAST] Zone ({ZONE.pos.x}:{ZONE.pos.y}) | Square ({str(int(sx)).rjust(3, " ")}:{str(int(sy)).rjust(3, " ")}) | Speed: {squares_per_sec:.1f} sq/s\t| ETA: {Utils.time_convert(time_left)}'
+        )
+# if not needs_more_layers: break
+# volume_idx += 1
+
+# SORT
+# [todo]
+
+# RAYCAST H
+# [todo]
+
+# GENERATE
+if len(volumes) != 0:
+    T.start()
+
+    volume_idx = 0
+    while True:
+        volume_name = f"Volume_{volume_idx}"
+        volume_mesh = D.meshes.new(volume_name)
+        volume_obj = D.objects.new(volume_name, volume_mesh)
+
+        volume_points = []
+        for sx in range(ZONE.num_squares):
+            for sy in range(ZONE.num_squares):
+                for cx in range(ZONE.num_cells):
+                    for cy in range(ZONE.num_cells):
+                        cell_abs_pos = ZONE.get_cell_pos(sx, sy, cx, cy)
+                        cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
+
+                        if cell_idx in volumes:
+                            volumes_in_cell = volumes[cell_idx]
+                            if len(volumes_in_cell) >= volume_idx + 1:
+                                volume_points.append(
+                                    Vector(
+                                        (
+                                            cell_abs_pos.x,
+                                            cell_abs_pos.y,
+                                            volumes_in_cell[volume_idx],
+                                        )
+                                    )
+                                )
+
+                squares_per_sec = T.get_iterations_per_sec()
+                squares_done = sy + (sx * ZONE.num_squares)
+                squares_left = math.pow(ZONE.num_squares, 2) - squares_done
+                time_left = squares_left / squares_per_sec
+                P.reprint(
+                    f'[GENERATE] Zone ({ZONE.pos.x}:{ZONE.pos.y}) | Volume {volume_idx} | Square ({str(int(sx)).rjust(3, " ")}:{str(int(sy)).rjust(3, " ")}) | Speed: {squares_per_sec:.1f} sq/s\t| ETA: {Utils.time_convert(time_left)}'
+                )
+
+        if len(volume_points) == 0:
+            break
         volume_mesh.from_pydata(volume_points, [], [])
         geo_coll.objects.link(volume_obj)
-        volume_squares.append(volume_obj)
+        volume_idx += 1
 
-    objects_hit_count = len(objects_hit)
-
-    if len(objects_hit) != 0:
-        for hit_object_name in objects_hit:
-            done_coll.objects.link(bpy.data.objects[hit_object_name])
-            bpy.data.collections[SRC_COLLECTION].objects.unlink(bpy.data.objects[hit_object_name])
-
-        objects_hit.clear()
-
-        volume_end = time.time()
-        printer.print(f'Volume {volume_idx} done in {Utils.time_convert(volume_end - volume_start)} - removed {objects_hit_count} objects')
-        volume_idx+=1
-
-    else: break
-
-
+for obj in excl_coll.objects:
+    excl_coll.objects.unlink(obj)
+    src_coll.objects.link(obj)
 end = time.time()
 
-printer.print(f'Total time: {Utils.time_convert(end - start)}')
+P.print(f"Total time: {Utils.time_convert(end - start)}")

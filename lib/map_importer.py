@@ -162,6 +162,9 @@ class MapImporter:
             displace.texture = tex
             displace.texture_coords = "UV"
 
+            solidify = obj.modifiers.new('Solidify', 'SOLIDIFY')
+            solidify.thickness = 2000
+
             # load image from height map file
             img = bpy.data.images.load(
                 os.path.join(

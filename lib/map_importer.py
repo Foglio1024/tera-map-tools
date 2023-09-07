@@ -1,12 +1,14 @@
 import os
 import bpy
 import math
-from map import Level
-from map import Terrain
-from scene_utils import SceneUtils
+from lib.printer import Printer
+from lib.map import Level
+from lib.map import Terrain
+from lib.scene_utils import SceneUtils
+from lib.utils import Utils
 from mathutils import Vector
-from utils import Utils
 
+P = Printer()
 
 class MapImporter:
     def __init__(self, source_dir, map_name):
@@ -34,12 +36,12 @@ class MapImporter:
         mesh_path = os.path.join(self.source_dir, level.name, sma.smc.mesh_path)
 
         if not os.path.exists(mesh_path):
-            print(f"Cannot find mesh file in {mesh_path}")
+            P.print(f"Cannot find mesh file in {mesh_path}")
         else:
             imported = None
             for loaded_name, loaded_path in loaded_meshes:
                 if loaded_path == mesh_path:
-                    # print(f'Copying {sma.label} <- {loaded_name}')
+                    # P.print(f'Copying {sma.label} <- {loaded_name}')
                     src = bpy.data.objects[loaded_name]
                     cp = src.copy()
                     cp.data = src.data
@@ -47,7 +49,7 @@ class MapImporter:
                     break
 
             if imported == None:
-                # print(f'Importing {mesh_path}')
+                # P.print(f'Importing {mesh_path}')
                 bpy.ops.import_scene.psk(filepath=mesh_path)
                 imported = bpy.context.scene.collection.objects[0]
                 loaded_meshes.append((f"{sma.label}_{sma.index}", mesh_path))
@@ -60,7 +62,7 @@ class MapImporter:
 
             self.map_coll.objects.link(imported)
 
-            # test_coll = Utils.find_or_create_collection('test')
+            # test_coll = SceneUtils.find_or_create_collection('test')
             # if test_coll.name not in self.map_coll.children:
             #     self.map_coll.children.link(test_coll)
             #     bpy.context.scene.collection.children.unlink(test_coll)
@@ -99,7 +101,7 @@ class MapImporter:
 
             objects.append(obj)
 
-            print(f"Created ConvexElem from {len(convex_elem.vertices)} vertices")
+            # P.print(f"Created ConvexElem from {len(convex_elem.vertices)} vertices")
 
             idx += 1
         if len(objects) > 1:
@@ -126,7 +128,7 @@ class MapImporter:
             if import_agg_geoms:
                 self.__generate_agg_geom(sma)
 
-            print(f"Imported actor {idx + 1} of {len(level.actors)}")
+            P.reprint(f"Imported actor {idx + 1} of {len(level.actors)}")
             idx += 1
 
     def __import_terrains(self, terrains):
@@ -193,7 +195,7 @@ class MapImporter:
         level = Level.read_from(self.t3d_path)
         terrains = Terrain.read_from(self.terrains_path)
 
-        self.map_coll = Utils.find_or_create_collection(level.name)
+        self.map_coll = SceneUtils.find_or_create_collection(level.name)
 
         if import_actors:
             self.__import_actors(level)

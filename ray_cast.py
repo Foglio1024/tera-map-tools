@@ -247,7 +247,17 @@ for sx in range(ZONE.num_squares):
 # volume_idx += 1
 
 # SORT
-# [todo]
+for sx in range(ZONE.num_squares):
+    for sy in range(ZONE.num_squares):
+        for cx in range(ZONE.num_cells):
+            for cy in range(ZONE.num_cells):
+                cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
+                if cell_idx in volumes:
+                    volumes[cell_idx].sort()
+                    P.reprint(
+                        f"Sorted cell {100*cell_idx/(math.pow(ZONE.num_squares,2)*math.pow(ZONE.num_cells,2)):.1f}"
+                    )
+
 
 # RAYCAST H
 # [todo]

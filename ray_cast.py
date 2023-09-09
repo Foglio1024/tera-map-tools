@@ -260,7 +260,40 @@ for sx in range(ZONE.num_squares):
 
 
 # RAYCAST H
-# [todo]
+for sx in range(ZONE.num_squares):
+    for sy in range(ZONE.num_squares):
+        for cx in range(ZONE.num_cells):
+            for cy in range(ZONE.num_cells):
+                cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
+                if cell_idx not in volumes:
+                    continue
+
+                z_values = volumes[cell_idx]
+
+                cell_pos = ZONE.get_cell_pos(sx, sy, cx, cy)
+
+                for i in range(len(z_values)):
+                    z = z_values[i]
+                    w = wrapped[cell_idx][i]
+
+                    if w: z -= MAX_Z
+
+                    result, found_z, obj = raycast(cell_pos.x, cell_pos.y, z + 0.001, 1)
+
+                    # h = MAX_Z/2 - abs(z) if z != MAX_Z else MAX_Z/2
+
+                    if result:
+                        h = (found_z - abs(z))
+                    else: h = MAX_Z/2
+                    if h < 0: h += MAX_Z/2
+                    if h > MAX_Z/2: h = MAX_Z/2
+
+                    if cell_idx in heights:
+                        heights[cell_idx].append(h)
+                    else:
+                        heights[cell_idx] = [h]
+
+display = heights
 
 # GENERATE
 if len(volumes) != 0:

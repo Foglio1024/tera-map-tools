@@ -1,3 +1,4 @@
 .vscode
 fake_bpy_modules_3.4-20230117/
 __pycache__/
+*.blend1

@@ -1,4 +1,4 @@
-SIZE = 15360
+from lib.globals import ZONE_SIZE as SIZE
 
 class Point2D:
     def __init__(self, x, y):

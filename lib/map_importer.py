@@ -163,7 +163,7 @@ class MapImporter:
             displace.texture_coords = "UV"
 
             solidify = obj.modifiers.new('Solidify', 'SOLIDIFY')
-            solidify.thickness = 2000
+            solidify.thickness = 300
 
             # load image from height map file
             img = bpy.data.images.load(

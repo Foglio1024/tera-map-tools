@@ -1,8 +1,11 @@
+from mathutils import Vector
+
+
 class T3DUtils:
-    def parse_name(line):
+    def parse_name(line:str):
         return line[line.find("Name=") + 5 : -1].replace('"', "")
 
-    def parse_class(line):
+    def parse_class(line: str):
         class_idx = line.find("Class=")
         class_name = ""
         if class_idx != -1:
@@ -14,7 +17,7 @@ class T3DUtils:
 
         return class_name
 
-    def parse_vector(line, name):
+    def parse_vector(line: str, name: str):
         if name != "":
             line = line.replace(f"{name}=", "")
 
@@ -26,8 +29,8 @@ class T3DUtils:
             value = float(part.split("=")[1])
             ret.append(value)
 
-        return ret
+        return Vector(ret)
 
-    def parse_mesh_path(line):
+    def parse_mesh_path(line: str):
         ret = line[line.find('"') :].replace('"', "").replace("'", "") + ".psk"
         return ret.replace("/Game", "StaticMeshes\\")

@@ -189,8 +189,8 @@ def create_topo(continent_id, min_x, max_x, min_y, max_y):
 
 # CONTINENT = 4
 CONTINENT = 3104
-CONTINENT = 3012
+#CONTINENT = 3012
 
 # create_topo(CONTINENT, 59, 59, 57, 57)
-# create_topo(CONTINENT, 992, 993, 1008, 1008)
-create_topo(CONTINENT, 991, 991, 992, 992)
+create_topo(CONTINENT, 992, 993, 1008, 1008)
+#create_topo(CONTINENT, 991, 991, 992, 992)

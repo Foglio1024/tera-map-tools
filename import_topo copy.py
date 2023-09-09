@@ -7,19 +7,19 @@ if not dir in sys.path:
     sys.path.append(dir)
 
 
-
 import array
-from lib.topology import * 
+from lib.topology import *
 from mathutils import Vector
 import math
 import xml.etree.ElementTree as ET
-
+from lib.globals import ZONE_SIZE
 
 # -------------------------------------------------------------- #
 
 AREA_LIST_PATH = "E:\\TERA_DEV\\Server\\Executable\\Bin\\Datasheet\\AreaList.xml"
 AREALIST = ET.parse(AREA_LIST_PATH).getroot()
 CONTINENTS = AREALIST.findall("Continent")
+
 
 def get_continent(id):
     ret = None
@@ -29,6 +29,7 @@ def get_continent(id):
             break
 
     return ret
+
 
 def get_continent_origin(continent_id):
     continent = get_continent(continent_id)
@@ -60,8 +61,8 @@ def get_continent_origin(continent_id):
 
 #         print(f"Added square{square.x} {square.y}")
 
-size = 614.4
 num_cells = 8
+
 
 def create_volumes(squares, onlyFirst):
     volumes = []
@@ -77,19 +78,18 @@ def create_volumes(squares, onlyFirst):
                 if cell.volume_idx == volumeIdx:
                     volume.cells.append(
                         Cell(
-                            #  (0.5 +cell.x + square.x * 2  - 120 * 2)/(size/120),
-                            #  (0.5 +cell.y + square.y * 2 )          /(size/120),
-                            (4/25)*(0.5 + cell.x + square.x * num_cells - 120*num_cells),
-                            (4/25)*(0.5 + cell.y + square.y * num_cells),
+                            (4 / 25)
+                            * (0.5 + cell.x + square.x * num_cells - 120 * num_cells),
+                            (4 / 25) * (0.5 + cell.y + square.y * num_cells),
                             (cell.z) / 25,
                             (cell.h) / 25,
-                            cell.volume_idx
+                            cell.volume_idx,
                         )
                     )
     return volumes
 
-def create_volume_obj(zone, volume, z_or_h):
 
+def create_volume_obj(zone, volume, z_or_h):
     name = f"Volume{volume.index}_{z_or_h}"
 
     mesh = bpy.data.meshes.new(name)
@@ -97,7 +97,7 @@ def create_volume_obj(zone, volume, z_or_h):
 
     vectors = []
     for point in volume.cells:
-        if z_or_h == 'h':
+        if z_or_h == "h":
             vectors.append(Vector([point.x, point.y, point.h]))
         else:
             vectors.append(Vector([point.x, point.y, point.z]))
@@ -109,11 +109,10 @@ def create_volume_obj(zone, volume, z_or_h):
     # obj.scale.y *= scale
     # obj.scale.z *= scale
 
-    obj.location.x = -(zone.position.x - zone.origin.x) * 15360 * 0.01
-    obj.location.y = (zone.position.y - zone.origin.y + 1) * 15360 * 0.01
+    obj.location.x = -(zone.position.x - zone.origin.x) * ZONE_SIZE * 0.01
+    obj.location.y = (zone.position.y - zone.origin.y + 1) * ZONE_SIZE * 0.01
 
     obj.rotation_euler[2] = math.radians(90)
-
 
     return obj
 
@@ -125,13 +124,13 @@ def create_point_clouds(zone):
         if len(volume.cells) == 0:
             continue
 
-        z_obj = create_volume_obj(zone, volume, 'z')
-        h_obj = create_volume_obj(zone, volume, 'h')
+        z_obj = create_volume_obj(zone, volume, "z")
+        h_obj = create_volume_obj(zone, volume, "h")
         bpy.context.scene.collection.objects.link(z_obj)
         bpy.context.scene.collection.objects.link(h_obj)
 
         # rotate and scale
-        pivot = bpy.data.objects.new('Pivot', None)
+        pivot = bpy.data.objects.new("Pivot", None)
         bpy.context.scene.collection.objects.link(pivot)
 
         z_obj.parent = pivot
@@ -151,6 +150,7 @@ def create_point_clouds(zone):
 
         bpy.data.objects.remove(bpy.data.objects[pivot.name])
 
+
 def load_zone(position, origin):
     # idx_path = f"E:\\TERA_DEV\\Server\\Topology\\x{position.x}y{position.y}.idx"
     # geo_path = f"E:\\TERA_DEV\\Server\\Topology\\x{position.x}y{position.y}.geo"
@@ -163,7 +163,7 @@ def load_zone(position, origin):
         for squareY in range(120):
             for squareX in range(120):
                 geoDataCount = array.array("I", idx.read(4))[0]
-                volumes_per_cell = array.array("H", idx.read(2*num_cells*num_cells))
+                volumes_per_cell = array.array("H", idx.read(2 * num_cells * num_cells))
                 squares.append(Square(squareX, squareY, geoDataCount, volumes_per_cell))
 
     with open(geo_path, "rb") as geo:
@@ -177,6 +177,7 @@ def load_zone(position, origin):
                         )
 
     return Zone(squares, position, origin)
+
 
 def load_topo(continent_id, min_x, max_x, min_y, max_y):
     origin = get_continent_origin(continent_id)
@@ -197,10 +198,14 @@ def load_topo(continent_id, min_x, max_x, min_y, max_y):
     zones = []
     for xml_zone in zone_list:
         pos = Point2D(int(xml_zone.attrib.get("x")), int(xml_zone.attrib.get("y")))
-        if pos.x < min_x: continue
-        if pos.x > max_x: continue
-        if pos.y < min_y: continue
-        if pos.y > max_y: continue
+        if pos.x < min_x:
+            continue
+        if pos.x > max_x:
+            continue
+        if pos.y < min_y:
+            continue
+        if pos.y > max_y:
+            continue
 
         zone = load_zone(pos, origin)
         zones.append(zone)
@@ -209,6 +214,7 @@ def load_topo(continent_id, min_x, max_x, min_y, max_y):
         print(f"[{curr}/{len(zone_list)}] Loaded zone {pos.x},{pos.y}")
 
     return zones
+
 
 def create_topo(continent_id, min_x, max_x, min_y, max_y):
     zones = load_topo(continent_id, min_x, max_x, min_y, max_y)
@@ -225,4 +231,4 @@ def create_topo(continent_id, min_x, max_x, min_y, max_y):
 CONTINENT = 3104
 
 # create_topo(CONTINENT, 59, 59, 57, 57)
-create_topo(CONTINENT, 992, 993, 1008, 1008)
+create_topo(CONTINENT, 993, 993, 1008, 1008)

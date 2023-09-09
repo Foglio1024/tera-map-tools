@@ -1,14 +1,16 @@
-class Printer:
-    def __init__(self):
-        self.text = ""
+import os
 
-    def reprint(self, text):
+class Printer:
+    def __clear_line(self):
+        w = os.get_terminal_size().columns
         empty = ""
-        for c in self.text:
+        for i in range(w):
             empty += " "
         print(empty, end="\r")
+
+    def reprint(self, text):
+        self.__clear_line()
         print(text, end="\r")
-        self.text = text
 
     def print(self, text):
-        self.reprint(text + "\n")
+        self.reprint(str(text) + "\n")

@@ -7,6 +7,7 @@ from lib.map import Terrain
 from lib.scene_utils import SceneUtils
 from lib.utils import Utils
 from mathutils import Vector
+from lib.globals import ZONE_SIZE
 
 P = Printer()
 
@@ -131,15 +132,15 @@ class MapImporter:
             P.reprint(f"Imported actor {idx + 1} of {len(level.actors)}")
             idx += 1
 
-    def __import_terrains(self, terrains):
+    def __import_terrains(self, terrains: list[Terrain]):
         for ter in terrains:
             # create square
             terrain_mesh = bpy.data.meshes.new(f"{ter.map}_{ter.name}")
             points = []
             points.append(Vector([0, 0, 0]))
-            points.append(Vector([-15360, 0, 0]))
-            points.append(Vector([-15360, 15360, 0]))
-            points.append(Vector([0, 15360, 0]))
+            points.append(Vector([-ZONE_SIZE, 0, 0]))
+            points.append(Vector([-ZONE_SIZE, ZONE_SIZE, 0]))
+            points.append(Vector([0, ZONE_SIZE, 0]))
 
             terrain_mesh.from_pydata(
                 points, [[0, 1], [1, 2], [2, 3], [3, 0]], [[1, 2, 3, 0]]
@@ -162,8 +163,8 @@ class MapImporter:
             displace.texture = tex
             displace.texture_coords = "UV"
 
-            solidify = obj.modifiers.new('Solidify', 'SOLIDIFY')
-            solidify.thickness = 300
+            # solidify = obj.modifiers.new('Solidify', 'SOLIDIFY')
+            # solidify.thickness = 300
 
             # load image from height map file
             img = bpy.data.images.load(
@@ -177,9 +178,7 @@ class MapImporter:
             tex.use_interpolation = False
 
             # move square to raw position
-            obj.location.x = ter.rel_location[0]
-            obj.location.y = ter.rel_location[1]
-            obj.location.z = ter.rel_location[2]
+            obj.location = ter.rel_location
 
             obj.scale.x = 4
             obj.scale.y = 4

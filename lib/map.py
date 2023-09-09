@@ -1,9 +1,13 @@
 import bpy
 import math
 from lib.t3d_utils import T3DUtils
-
+from lib.printer import Printer
 
 import os
+
+from mathutils import Vector
+
+P = Printer()
 
 
 class StaticMeshActor:
@@ -35,17 +39,15 @@ class SceneComponent:
         tmp = bpy.data.objects.new("tmp", None)
         obj.parent = tmp
 
-        tmp.scale.x = self.scale[0]
-        tmp.scale.y = self.scale[1] * (-1)
-        tmp.scale.z = self.scale[2]
+        tmp.scale.x = self.scale.x
+        tmp.scale.y = self.scale.y * (-1)
+        tmp.scale.z = self.scale.z
 
-        tmp.rotation_euler.x = math.radians(self.rotation[2] * (-1))
-        tmp.rotation_euler.y = math.radians(self.rotation[0])
-        tmp.rotation_euler.z = math.radians(self.rotation[1])
+        tmp.rotation_euler.x = math.radians(self.rotation.z * (-1))
+        tmp.rotation_euler.y = math.radians(self.rotation.x)
+        tmp.rotation_euler.z = math.radians(self.rotation.y)
 
-        tmp.location.x = self.location[0]
-        tmp.location.y = self.location[1]
-        tmp.location.z = self.location[2]
+        tmp.location = self.location
 
         bpy.context.evaluated_depsgraph_get().update()
 
@@ -60,9 +62,9 @@ class StaticMeshComponent:
     def __init__(self, name):
         self.name = name
         self.mesh_path = ""
-        self.location = [0, 0, 0]
-        self.rotation = [0, 0, 0]
-        self.scale = [1, 1, 1]
+        self.location = Vector([0, 0, 0])
+        self.rotation = Vector([0, 0, 0])
+        self.scale = Vector([1, 1, 1])
         self.disable_collisions = False
         self.agg_geoms = []
 
@@ -98,7 +100,7 @@ class StaticMeshComponent:
             str_vertices = vertex_data.split("|")
 
             for str_vert in str_vertices:
-                # print(str_vert)
+                # P.print(str_vert)
                 convex_elem.vertices.append(T3DUtils.parse_vector(str_vert, ""))
 
             idx_elem_box = line.find("ElemBox=")
@@ -107,7 +109,7 @@ class StaticMeshComponent:
             ].split(",")
             idx_data.reverse()
             for str_idx in idx_data:
-                # print(str_idx)
+                # P.print(str_idx)
                 convex_elem.indices.append(int(str_idx))
 
             self.agg_geoms.append(convex_elem)
@@ -115,30 +117,24 @@ class StaticMeshComponent:
             line = line[idx_elem_box + len("ElemBox=") :]
 
     def apply_transform_to(self, obj):
-        obj.scale.x = self.scale[0]
-        obj.scale.y = self.scale[1] * (-1)
-        obj.scale.z = self.scale[2]
+        obj.scale.x = self.scale.x
+        obj.scale.y = self.scale.y * (-1)
+        obj.scale.z = self.scale.z
 
-        obj.rotation_euler.x = math.radians(self.rotation[2] * (-1))
-        obj.rotation_euler.y = math.radians(self.rotation[0])
-        obj.rotation_euler.z = math.radians(self.rotation[1])
+        obj.rotation_euler.x = math.radians(self.rotation.z * (-1))
+        obj.rotation_euler.y = math.radians(self.rotation.x)
+        obj.rotation_euler.z = math.radians(self.rotation.y)
 
-        obj.location.x = self.location[0]
-        obj.location.y = self.location[1]
-        obj.location.z = self.location[2]
+        obj.location = self.location
 
     def agg_apply_transform_to(self, obj):
-        obj.scale.x = self.scale[0]
-        obj.scale.y = self.scale[1]  # * (-1)
-        obj.scale.z = self.scale[2]
+        obj.scale = self.scale
 
-        obj.rotation_euler.x = math.radians(self.rotation[2] * (-1))
-        obj.rotation_euler.y = math.radians(self.rotation[0] * (-1))
-        obj.rotation_euler.z = math.radians(self.rotation[1])
+        obj.rotation_euler.x = math.radians(self.rotation.z * (-1))
+        obj.rotation_euler.y = math.radians(self.rotation.x * (-1))
+        obj.rotation_euler.z = math.radians(self.rotation.y)
 
-        obj.location.x = self.location[0]
-        obj.location.y = self.location[1]
-        obj.location.z = self.location[2]
+        obj.location = self.location
 
 
 class Level:
@@ -148,7 +144,7 @@ class Level:
         self.name = name
 
     def read_from(file_path):
-        print(f"Loading level from {file_path}")
+        P.print(f"Loading level from {file_path}")
 
         h, t = os.path.split(file_path)
 
@@ -163,7 +159,7 @@ class Level:
         actor_labels = []
 
         lines = open(file_path, "r").readlines()
-        print(f"Read {len(lines)} lines")
+        P.print(f"Read {len(lines)} lines")
 
         idx = 0
         for line in lines:
@@ -180,7 +176,7 @@ class Level:
                 #     current_blockingvolumeactor = BlockingVolumeActor(f"{actor_name}_{idx}")
                 idx = idx + 1
                 actor_labels.append(actor_name)
-                print(f"Created Actor {actor_name}")
+                P.reprint(f"Created Actor {actor_name}")
 
             elif line.startswith("ActorLabel") and current_staticmeshactor is not None:
                 current_staticmeshactor.set_label(line)
@@ -246,7 +242,7 @@ class BrushComponent:
         self.name = name
         self.vertices = []
         self.indices = []
-        self.location = [0, 0, 0]
+        self.location = Vector([0, 0, 0])
 
     def read_line(self, line):
         if "AggGeom" in line:
@@ -254,12 +250,10 @@ class BrushComponent:
         if "RelativeLocation" in line:
             self.location = T3DUtils.parse_vector(line, "RelativeLocation")
 
-    def apply_transform_to(self, obj):
+    def apply_transform_to(self, obj: bpy.types.Object):
         obj.scale.y = obj.scale.y * (-1)
 
-        obj.location.x = self.location[0]
-        obj.location.y = self.location[1]
-        obj.location.z = self.location[2]
+        obj.location = self.location
 
     def parse_agg_geom(self, line):
         line = line.replace("AggGeom=(", "")[:-1]
@@ -279,7 +273,7 @@ class BrushComponent:
         str_vertices = vertex_data.split("|")
 
         for str_vert in str_vertices:
-            # print(str_vert)
+            # P.print(str_vert)
             self.vertices.append(T3DUtils.parse_vector(str_vert, ""))
 
         idx_data = line[
@@ -287,7 +281,7 @@ class BrushComponent:
         ].split(",")
 
         for str_idx in idx_data:
-            # print(str_idx)
+            # P.print(str_idx)
             self.indices.append(int(str_idx))
 
 
@@ -310,7 +304,7 @@ class Terrain:
         if not os.path.exists(file_path):
             return ret
 
-        print(f"Reading terrains from {file_path}")
+        P.print(f"Reading terrains from {file_path}")
 
         current_terrain = None
         lines = open(file_path, "r").readlines()
@@ -348,7 +342,7 @@ class Terrain:
 
         return ret
 
-    def __init__(self, line):
+    def __init__(self, line: str):
         idx = line.find("_Terrain")
         self.map = line[:idx]
         self.name = line[idx + 1 :]

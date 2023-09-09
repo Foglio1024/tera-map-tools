@@ -4,9 +4,14 @@ import array
 import math
 
 from lib.topology import Node
+from lib.printer import Printer
 
-gdi_path = f"E:\\TERA_DEV\\Server\\Topology\\pathdata_RNW_B_P.gdi"
-nod_path = f"E:\\TERA_DEV\\Server\\Topology\\pathdata_RNW_B_P.nod"
+P = Printer()
+
+name = 'RNW_C_P'
+
+gdi_path = f"E:\\TERA_DEV\\Server\\Topology\\pathdata_{name}.gdi"
+nod_path = f"E:\\TERA_DEV\\Server\\Topology\\pathdata_{name}.nod"
 
 node_count = 0
 
@@ -35,7 +40,7 @@ vectors = []
 edges = []
 for node in nodes.values():
     vectors.append([node.x, node.y, node.z])
-    print(node.idx)
+    P.reprint(f'{node.idx}/{len(nodes.values())}')
     for neighbor in node.neighbors:
         if neighbor in nodes.keys():
             edges.append([node.idx, neighbor])
@@ -47,7 +52,7 @@ mesh.from_pydata(vectors, edges, [])
 obj = bpy.data.objects.new("Nodes", mesh)
 bpy.context.scene.collection.objects.link(obj)
 
-scale = 0.01
+scale = 0.04
 obj.scale.x *= scale * -1
 obj.scale.y *= scale
 obj.scale.z *= scale

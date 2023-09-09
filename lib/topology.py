@@ -15,7 +15,7 @@ class Point3D:
 
 class Volume:
     def __init__(self, volume_idx):
-        self.points = []
+        self.cells = []
         self.index = volume_idx
 
 

@@ -1,4 +1,5 @@
 import math
+import struct
 import time
 import bmesh
 import bpy
@@ -136,12 +137,15 @@ class ZoneShape:
         return ret
 
 
-ZONE = ZoneShape(Point2D(57, 57), Point2D(56, 57), 65535 / 2, 614.4)
+ZONE = ZoneShape(Point2D(992, 1008), Point2D(1000, 1000), 65535 / 2, 614.4)
+SRC_COLLECTION = "Rucmia_P"
+# ZONE = ZoneShape(Point2D(59, 57), Point2D(56, 57), 65535 / 2, 614.4)
+# SRC_COLLECTION = "RNW_C_P"
 
 
-def raycast(x: float, y: float, z: float):
+def raycast(x: float, y: float, z: float, z_dir: float = -1):
     result, location, normal, index, object, matrix = C.scene.ray_cast(
-        C.view_layer.depsgraph, (x, y, z), (0, 0, -1), distance=ZONE.max_height
+        C.view_layer.depsgraph, (x, y, z), (0, 0, z_dir)
     )
     return result, location.z, object
 
@@ -152,13 +156,10 @@ def set_origin_to_geometry(objects):
         o.select_set(True)
         C.view_layer.objects.active = o
 
-    # bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
     bpy.ops.object.origin_set(type="ORIGIN_GEOMETRY")
     bpy.ops.object.select_all(action="DESELECT")
 
 
-# ZONE_SIZE = ZONE.base_size * SCENE_SCALE
-SRC_COLLECTION = "RNW_C_P"
 
 excl_coll = D.collections.new(SRC_COLLECTION + "_excl")
 C.scene.collection.children.link(excl_coll)
@@ -186,18 +187,18 @@ objects_hit = []
 
 volume_idx = 0
 
-volumes = {}
-
+volumes = {}  # cell_idx : z_values
+heights = {}  # cell_idx : h_values
+wrapped = {}
 start = time.time()
 
 volume_start = time.time()
 
 T.start()
 
-# while True:
+MAX_Z = 65535/25
 
 # RAYCAST Z
-
 needs_more_layers = False
 for sx in range(ZONE.num_squares):
     for sy in range(ZONE.num_squares):
@@ -208,19 +209,22 @@ for sx in range(ZONE.num_squares):
 
                 hidden_objects = []
                 z_cast = ZONE.max_height
-                # if cell_idx in volumes:
-                #     cells = volumes[cell_idx]
-                #     z_cast = cells[len(cells) - 1]
                 while True:
                     result, z, obj = raycast(cell_abs_pos.x, cell_abs_pos.y, z_cast)
-
+                    wrap = False
                     if result:
+                        if z < 0: 
+                            z = (MAX_Z + z)
+                            wrap = True
+
                         if cell_idx in volumes:
-                            volumes[cell_idx].append(z)
+                            if volumes[cell_idx][len(volumes[cell_idx]) - 1] - z > 1:
+                                volumes[cell_idx].append(z)
+                            wrapped[cell_idx].append(wrap)
                         else:
                             volumes[cell_idx] = [z]
+                            wrapped[cell_idx] = [wrap]
 
-                        # needs_more_layers = True
                         # z_cast = z - 0.001
                         obj.hide_set(True)
                         hidden_objects.append(obj)
@@ -230,7 +234,7 @@ for sx in range(ZONE.num_squares):
                             P.print(
                                 f"Missed ({sx},{sy})->({cx},{cy}) | ({cell_abs_pos.x} : {cell_abs_pos.y})"
                             )
-
+                        # todo: add point if missed? for dungeons with no terrain
                         for hidden in hidden_objects:
                             hidden.hide_set(False)
 
@@ -243,8 +247,6 @@ for sx in range(ZONE.num_squares):
         P.reprint(
             f'[RAYCAST] Zone ({ZONE.pos.x}:{ZONE.pos.y}) | Square ({str(int(sx)).rjust(3, " ")}:{str(int(sy)).rjust(3, " ")}) | Speed: {squares_per_sec:.1f} sq/s\t| ETA: {Utils.time_convert(time_left)}'
         )
-# if not needs_more_layers: break
-# volume_idx += 1
 
 # SORT
 for sx in range(ZONE.num_squares):
@@ -252,12 +254,15 @@ for sx in range(ZONE.num_squares):
         for cx in range(ZONE.num_cells):
             for cy in range(ZONE.num_cells):
                 cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
+                max_cell_idx = ZONE.get_cell_index(
+                    ZONE.num_squares - 1,
+                    ZONE.num_squares - 1,
+                    ZONE.num_cells - 1,
+                    ZONE.num_cells - 1,
+                )
                 if cell_idx in volumes:
                     volumes[cell_idx].sort()
-                    P.reprint(
-                        f"Sorted cell {100*cell_idx/(math.pow(ZONE.num_squares,2)*math.pow(ZONE.num_cells,2)):.1f}"
-                    )
-
+                    P.reprint(f"Sorted cell {cell_idx/max_cell_idx}")
 
 # RAYCAST H
 for sx in range(ZONE.num_squares):
@@ -313,8 +318,8 @@ if len(volumes) != 0:
                         cell_abs_pos = ZONE.get_cell_pos(sx, sy, cx, cy)
                         cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
 
-                        if cell_idx in volumes:
-                            volumes_in_cell = volumes[cell_idx]
+                        if cell_idx in display:
+                            volumes_in_cell = display[cell_idx]
                             if len(volumes_in_cell) >= volume_idx + 1:
                                 volume_points.append(
                                     Vector(
@@ -343,6 +348,45 @@ if len(volumes) != 0:
 for obj in excl_coll.objects:
     excl_coll.objects.unlink(obj)
     src_coll.objects.link(obj)
+
+D.collections.remove(excl_coll)
+C.window.view_layer.layer_collection.children[geo_coll.name].exclude = False
+
 end = time.time()
+
+# EXPORT
+if True:
+    idx_file = open(f"E:/TERA_DEV/x{ZONE.pos.x}y{ZONE.pos.y}.idx", "wb")
+    geo_file = open(f"E:/TERA_DEV/x{ZONE.pos.x}y{ZONE.pos.y}.geo", "wb")
+    for sy in range(ZONE.num_squares):
+        for sx in range(ZONE.num_squares):
+            volumes_amount = 0
+            volumes_per_cell = []
+
+            for cy in range(ZONE.num_cells):
+                for cx in range(ZONE.num_cells):
+                    cell_idx = ZONE.get_cell_index(sx, sy, cx, cy)
+                    z_values = volumes[cell_idx]
+                    volumes_amount += len(z_values)
+                    volumes_per_cell.append(len(z_values))
+                    for i in range(len(z_values)):
+                        z = z_values[i]
+                        h = heights[cell_idx][i]
+
+                        try:
+                            geo_file.write(struct.pack('H', int(z)*25))
+                        except:
+                            P.print(f'ERROR on Z:{z}')
+                        try:
+                            geo_file.write(struct.pack('H', int(h)*25))
+                        except:
+                            P.print(f'ERROR on H:{h}')
+
+            idx_file.write(struct.pack('I',volumes_amount))
+            for vpc in volumes_per_cell:
+                idx_file.write(struct.pack('H',vpc))
+
+    idx_file.close()
+    geo_file.close()
 
 P.print(f"Total time: {Utils.time_convert(end - start)}")

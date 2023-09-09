@@ -64,7 +64,7 @@ def create_volumes(squares, onlyFirst):
         for square in squares:
             for cell in square.cells:
                 if cell.volume_idx == volumeIdx:
-                    volume.points.append(
+                    volume.cells.append(
                         Point3D(
                             (16 / 10) * (cell.x + square.x * 8 + 0.5 - 120 * 8),
                             (16 / 10) * (cell.y + square.y * 8 + 0.5),
@@ -77,12 +77,12 @@ def create_point_clouds(zone):
     volumes = create_volumes(zone.squares, False)
 
     for volume in volumes:
-        if len(volume.points) == 0:
+        if len(volume.cells) == 0:
             continue
         mesh = bpy.data.meshes.new(f"Volume{volume.index}")
 
         vectors = []
-        for point in volume.points:
+        for point in volume.cells:
             vectors.append(Vector([point.x, point.y, point.z]))
 
         mesh.from_pydata(vectors, [], [])
@@ -187,6 +187,10 @@ def create_topo(continent_id, min_x, max_x, min_y, max_y):
 
 # -------------------------------------------------------------- #
 
-CONTINENT = 4
+# CONTINENT = 4
+CONTINENT = 3104
+CONTINENT = 3012
 
-create_topo(CONTINENT, 57, 57, 57, 57)
+# create_topo(CONTINENT, 59, 59, 57, 57)
+# create_topo(CONTINENT, 992, 993, 1008, 1008)
+create_topo(CONTINENT, 991, 991, 992, 992)

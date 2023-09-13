@@ -193,14 +193,13 @@ class MapImporter:
             if obj.name in bpy.context.scene.collection.objects:
                 bpy.context.scene.collection.objects.unlink(obj)
 
-    def import_map(self, import_actors = True, import_terrains = True, import_blocking_volumes = False):
+    def import_map(self, import_meshes = False, import_agg_geoms = True, import_actors = True, import_terrains = True, import_blocking_volumes = False, hide = False):
         level = Level.read_from(self.t3d_path)
         terrains = Terrain.read_from(self.terrains_path)
 
         self.map_coll = SceneUtils.find_or_create_collection(level.name)
-
         if import_actors:
-            self.__import_actors(level)
+            self.__import_actors(level, import_meshes, import_agg_geoms)
         
         if import_blocking_volumes:
             self.__import_blocking_volumes(level)
@@ -212,3 +211,6 @@ class MapImporter:
 
         for coll in self.map_coll.children:
             SceneUtils.reframe(coll)
+        
+        if hide: SceneUtils.set_exclude_collection(self.map_coll.name, True)
+

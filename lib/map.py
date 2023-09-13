@@ -26,6 +26,9 @@ class StaticMeshActor:
 class SceneComponent:
     def __init__(self, name):
         self.name = name
+        self.scale = Vector((1,1,1))
+        self.rotation = Vector((0,0,0))
+        self.location = Vector((0,0,0))
 
     def read_line(self, line):
         if line.find("RelativeLocation") != -1:

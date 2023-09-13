@@ -33,7 +33,7 @@ with open(nod_path, "rb") as nod:
         coords = array.array("f", nod.read(3 * 4))
         neighbors = array.array("i", nod.read(8 * 4))
         distances = array.array("i", nod.read(8 * 4))
-        node = Node(coords[0], coords[1], coords[2], neighbors, distances, idx)
+        node = Node(idx, coords[0], coords[1], coords[2], neighbors, distances)
         nodes[idx] = node
 
 vectors = []

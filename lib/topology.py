@@ -1,5 +1,6 @@
 from lib.globals import ZONE_SIZE as SIZE
 
+
 class Point2D:
     def __init__(self, x, y):
         self.x = x
@@ -40,8 +41,11 @@ class Square:
         self.cells.append(geodata)
 
     def contains_point(self, point2d):
-        return (point2d.x / SIZE in range(self.relative_position.x, self.relative_position.x + 1)
-            and point2d.y / SIZE in range(self.relative_position.y, self.relative_position.y + 1))
+        return point2d.x / SIZE in range(
+            self.relative_position.x, self.relative_position.x + 1
+        ) and point2d.y / SIZE in range(
+            self.relative_position.y, self.relative_position.y + 1
+        )
 
 
 class Zone:
@@ -52,16 +56,35 @@ class Zone:
         self.relative_position = Point2D(position.x - origin.x, position.y - origin.y)
 
     def contains_point(self, point2d):
-        return (point2d.x / SIZE in range(self.relative_position.x, self.relative_position.x + 1)
-            and point2d.y / SIZE in range(self.relative_position.y, self.relative_position.y + 1))
+        return point2d.x / SIZE in range(
+            self.relative_position.x, self.relative_position.x + 1
+        ) and point2d.y / SIZE in range(
+            self.relative_position.y, self.relative_position.y + 1
+        )
 
 
 class Node:
-    def __init__(self, x, y, z, neighbors, distances, idx):
+    def __init__(
+        self,
+        idx,
+        x,
+        y,
+        z,
+        neighbors=[-1, -1, -1, -1, -1, -1, -1, -1],
+        distances=[
+            2147483647,
+            2147483647,
+            2147483647,
+            2147483647,
+            2147483647,
+            2147483647,
+            2147483647,
+            2147483647,
+        ]
+    ):
         self.x = x
         self.y = y
         self.z = z
         self.neighbors = neighbors
         self.distances = distances
         self.idx = idx
-

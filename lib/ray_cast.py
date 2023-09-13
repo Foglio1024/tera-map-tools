@@ -16,6 +16,7 @@ from bpy_extras.object_utils import object_data_add
 from mathutils import bvhtree
 from mathutils import Vector
 from lib.topology import Point2D
+from lib.topology import Node
 from lib.printer import Printer
 from lib.time_tracker import TimeTracker
 from lib.utils import Utils
@@ -206,7 +207,7 @@ class GeoGenerator:
                                         > 1
                                     ):
                                         self.volumes[cell_idx].append(z)
-                                    self.wrapped[cell_idx].append(wrap)
+                                        self.wrapped[cell_idx].append(wrap)
                                 else:
                                     self.volumes[cell_idx] = [z]
                                     self.wrapped[cell_idx] = [wrap]
@@ -313,7 +314,7 @@ class GeoGenerator:
 
             volume_idx = 0
             while True:
-                volume_name = f"Volume_{volume_idx}"
+                volume_name = f"x{self.pos.x}y{self.pos.y}_{volume_idx}"
                 volume_mesh = D.meshes.new(volume_name)
                 volume_obj = D.objects.new(volume_name, volume_mesh)
 
@@ -328,12 +329,16 @@ class GeoGenerator:
                                 if cell_idx in source:
                                     volumes_in_cell = source[cell_idx]
                                     if len(volumes_in_cell) >= volume_idx + 1:
+                                        z = volumes_in_cell[volume_idx]
+                                        w = self.wrapped[cell_idx][volume_idx]
+                                        if w != 0:
+                                            z -= MAX_Z
                                         volume_points.append(
                                             Vector(
                                                 (
                                                     cell_abs_pos.x,
                                                     cell_abs_pos.y,
-                                                    volumes_in_cell[volume_idx],
+                                                    z,
                                                 )
                                             )
                                         )

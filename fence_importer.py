@@ -2,19 +2,15 @@ import bpy
 import os
 import xml.etree.ElementTree as ET
 import math
+import os
+import sys
+
+dir = os.path.dirname(bpy.data.filepath)
+if not dir in sys.path:
+    sys.path.append(dir)
+
 from bpy_extras.object_utils import object_data_add
-
-PATH = 'E:\\TERA_DEV\\Server\\Executable\\Bin\\Datasheet\\AreaData\\AreaData_7031_RNW_C_P.xml'
-
-AREA = ET.parse(PATH).getroot()
-
-sections = []
-print(AREA)
-
-xsections = AREA.findall('FlySection')
-
-print(f'Found {str(len(xsections))} sections')
-
+from lib.scene_utils import SceneUtils
 
 def parse_sections(xsections):
     for section in xsections:
@@ -26,43 +22,32 @@ def parse_sections(xsections):
         
         sections.append(fences)
 
-        parse_sections(section.findall('FlySection'))
+        # parse_sections(section.findall('FlySection'))
         
+
+map_name = 'HNC_A_P'
+continent_id = 9002
+
+# PATH = 'E:\\TERA_DEV\\Server\\Executable\\Bin\\Datasheet\\AreaData\\AreaData_7031_RNW_C_P.xml'
+# PATH = 'E:\\TERA_DEV\\Server\\Executable\\Bin\\Datasheet\\ClimbingTerritory_7031_RNW_B_P.xml'
+PATH = f'E:\\TERA_DEV\\Server\\Executable\\Bin\\Datasheet\\ShieldTerritory_{continent_id}_{map_name}.xml'
+
+ROOT = ET.parse(PATH).getroot()
+
+sections = []
+print(ROOT)
+
+# xsections = ROOT.findall('FlySection')
+xsections = ROOT.findall('Territory')
+
+print(f'Found {str(len(xsections))} sections')
 
 parse_sections(xsections)
 
+fence_coll = SceneUtils.find_or_create_collection('Fences')
 
-pivot = bpy.data.objects.new("Pivot", None)
-bpy.context.scene.collection.objects.link(pivot)
-
-
-def reframe():
-
-    pivot.scale.x *= 0.01 * (-1)
-    pivot.scale.y *= 0.01
-    pivot.scale.z *= 0.01
-
-    pivot.rotation_euler[2] = math.radians(-90)
-
-    bpy.context.evaluated_depsgraph_get().update()
-    for child in pivot.children:
-        pwm = child.matrix_world.copy()
-        child.parent = None
-        child.matrix_world = pwm
-
-    bpy.data.objects.remove(bpy.data.objects[pivot.name])
-
-def find_or_create_collection(coll_name):
-    found = None
-    for c in bpy.data.collections:
-        if c.name == coll_name:
-            found = c
-    if found == None:
-        found = bpy.data.collections.new(coll_name)
-        bpy.context.scene.collection.children.link(found)
-
-    return found
-
+# pivot = bpy.data.objects.new("Pivot", None)
+# fence_coll.objects.link(pivot)
 
 meshes = []
 idx = 0
@@ -84,24 +69,17 @@ for section in sections:
         
     edges[len(edges) -  1][1] = 0
 
-    mesh = bpy.data.meshes.new("FlySection " + str(idx))
+    mesh = bpy.data.meshes.new("Fence " + str(idx))
     mesh.from_pydata(vectors, edges, [])
-    obj = bpy.data.objects.new("FlySection " + str(idx), mesh)
-    obj.parent = pivot
+    obj = bpy.data.objects.new("Fence " + str(idx), mesh)
+    # obj.parent = pivot
     obj.scale.x = 4
     obj.scale.y = 4
     obj.scale.z = 4
-    bpy.context.scene.collection.objects.link(obj)
+    fence_coll.objects.link(obj)
 
-    # for point in points:
-    #     empty = bpy.data.objects.new('Fence' , None)
-    #     empty.location.x = point[0]*4
-    #     empty.location.y = point[1]*4
-    #     empty.location.z = point[2]*4
-    #     coll.objects.link(empty)
-    
     idx = idx + 1
 
-reframe()
+SceneUtils.reframe(fence_coll)
 
 
